@@ -1,0 +1,55 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - toolchain: 'stable'
+          - toolchain: 'nightly'
+
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup | Toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: '${{ matrix.toolchain }}'
+
+      - name: Test
+        run: cargo test
+        env:
+          RUST_LOG: debug
+          RUST_BACKTRACE: full
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          components: rustfmt, clippy
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --no-deps --all-targets -- -D warnings
+
+      - name: Build-doc
+        run: cargo doc --all --no-deps
+        env:
+          RUSTDOCFLAGS: '-D warnings'
+
+      - name: Doc tests
+        run: cargo test --doc
