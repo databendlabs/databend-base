@@ -28,7 +28,15 @@ impl fmt::Display for PercentileStats {
         write!(
             f,
             "[samples: {}, P0.1: {}, P1: {}, P5: {}, P10: {}, P50: {}, P90: {}, P99: {}, P99.9: {}]",
-            self.samples, self.p0_1, self.p1, self.p5, self.p10, self.p50, self.p90, self.p99, self.p99_9
+            self.samples,
+            self.p0_1,
+            self.p1,
+            self.p5,
+            self.p10,
+            self.p50,
+            self.p90,
+            self.p99,
+            self.p99_9
         )
     }
 }
