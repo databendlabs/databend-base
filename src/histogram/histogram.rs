@@ -120,13 +120,15 @@ impl Histogram {
                 let group_index = (i - 4) / Self::GROUP_SIZE;
                 let offset_in_group = (i - 4) % Self::GROUP_SIZE;
                 // Minimum value: (offset_in_group | GROUP_MSB_BIT) << group_index
-                bucket_min_values[i] = ((offset_in_group | Self::GROUP_MSB_BIT) << group_index) as u64;
+                bucket_min_values[i] =
+                    ((offset_in_group | Self::GROUP_MSB_BIT) << group_index) as u64;
             }
         }
 
         // Precompute bucket indices for small values
-        let small_value_buckets: Vec<u8> =
-            (0..Self::SMALL_VALUE_CACHE_SIZE).map(|v| Self::calculate_bucket_uncached(v as u64) as u8).collect();
+        let small_value_buckets: Vec<u8> = (0..Self::SMALL_VALUE_CACHE_SIZE)
+            .map(|v| Self::calculate_bucket_uncached(v as u64) as u8)
+            .collect();
 
         Self {
             buckets: vec![0; Self::BUCKETS_FOR_U64],
@@ -290,7 +292,10 @@ mod tests {
         assert_eq!(hist.get_bucket(1), 1);
         assert_eq!(hist.get_bucket(5), 1);
         assert_eq!(hist.get_bucket(Histogram::calculate_bucket_uncached(10)), 1);
-        assert_eq!(hist.get_bucket(Histogram::calculate_bucket_uncached(100)), 1);
+        assert_eq!(
+            hist.get_bucket(Histogram::calculate_bucket_uncached(100)),
+            1
+        );
     }
 
     #[test]
@@ -309,7 +314,11 @@ mod tests {
     fn test_u64_max_coverage() {
         let max_bucket = Histogram::calculate_bucket_uncached(u64::MAX);
         assert_eq!(max_bucket, 251, "u64::MAX should map to bucket 251");
-        assert_eq!(Histogram::BUCKETS_FOR_U64, 252, "Should need exactly 252 buckets");
+        assert_eq!(
+            Histogram::BUCKETS_FOR_U64,
+            252,
+            "Should need exactly 252 buckets"
+        );
 
         // Verify new() creates enough buckets to record u64::MAX
         let mut hist = Histogram::new();
