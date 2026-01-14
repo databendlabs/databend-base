@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 
+use super::bucket_config::BucketConfig;
 use super::percentile_stats::PercentileStats;
 use crate::histogram::slot::Slot;
 
@@ -57,7 +58,7 @@ use crate::histogram::slot::Slot;
 /// Fixed at 252 buckets * 8 bytes = 2,016 bytes per slot, covering the entire
 /// u64 range [0, 2^64-1].
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Histogram<T = ()> {
+pub struct Histogram<T = (), const WIDTH: usize = 3> {
     /// Slots containing bucket counts and metadata. Uses VecDeque for O(1) front removal.
     /// All slots in the deque are active. First slot (index 0) is oldest, last is current.
     /// The VecDeque's capacity determines the maximum number of slots.
@@ -79,46 +80,13 @@ pub struct Histogram<T = ()> {
     small_value_buckets: Vec<u8>,
 }
 
-impl<T> Default for Histogram<T> {
+impl<T, const WIDTH: usize> Default for Histogram<T, WIDTH> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T> Histogram<T> {
-    /// The width of the bit pattern used for bucketing (most significant bits).
-    ///
-    /// Each bucket group uses 3 bits: 1 MSB + 2 offset bits.
-    const WIDTH: usize = 3;
-
-    /// The MSB bit pattern for bucket groups.
-    ///
-    /// Sets the most significant bit to 1: 1 << (WIDTH - 1) = 0b100
-    const GROUP_MSB_BIT: usize = 1 << (Self::WIDTH - 1);
-
-    /// Number of buckets per group.
-    ///
-    /// Each group contains GROUP_MSB_BIT buckets.
-    /// For WIDTH=3: GROUP_MSB_BIT = 4 buckets per group.
-    const GROUP_SIZE: usize = Self::GROUP_MSB_BIT;
-
-    /// Mask for extracting the offset within a bucket group.
-    ///
-    /// Extracts the (WIDTH-1) bits after the MSB: GROUP_MSB_BIT - 1 = 0b11
-    const MASK: u64 = (Self::GROUP_MSB_BIT - 1) as u64;
-
-    /// The exact number of buckets needed to cover all u64 values with logarithmic precision.
-    ///
-    /// Calculated as: GROUP_SIZE * (66 - WIDTH)
-    /// For WIDTH=3: 4 * (66 - 3) = 4 * 63 = 252
-    /// This equals bucket_index(u64::MAX) + 1
-    const BUCKETS_FOR_U64: usize = Self::GROUP_SIZE * (66 - Self::WIDTH);
-
-    /// Cache size for small value bucket lookups.
-    ///
-    /// Values 0-4095 map to bucket indices 0-44, fitting in u8.
-    const SMALL_VALUE_CACHE_SIZE: usize = 4096;
-
+impl<T, const WIDTH: usize> Histogram<T, WIDTH> {
     /// Creates a new histogram with 1 slot and 252 buckets.
     ///
     /// Memory usage: 252 * 8 bytes = 2,016 bytes per histogram.
@@ -138,33 +106,33 @@ impl<T> Histogram<T> {
     pub fn with_slots(capacity: usize) -> Self {
         assert!(capacity > 0, "capacity must be at least 1");
 
-        let mut bucket_min_values = vec![0u64; Self::BUCKETS_FOR_U64];
+        let mut bucket_min_values = vec![0u64; BucketConfig::<WIDTH>::BUCKETS];
         #[allow(clippy::needless_range_loop)]
-        for i in 0..Self::BUCKETS_FOR_U64 {
+        for i in 0..BucketConfig::<WIDTH>::BUCKETS {
             if i < 4 {
                 // Group 0: [0, 1, 2, 3]
                 bucket_min_values[i] = i as u64;
             } else {
-                let group_index = (i - 4) / Self::GROUP_SIZE;
-                let offset_in_group = (i - 4) % Self::GROUP_SIZE;
+                let group_index = (i - 4) / BucketConfig::<WIDTH>::GROUP_SIZE;
+                let offset_in_group = (i - 4) % BucketConfig::<WIDTH>::GROUP_SIZE;
                 // Minimum value: (offset_in_group | GROUP_MSB_BIT) << group_index
-                bucket_min_values[i] =
-                    ((offset_in_group | Self::GROUP_MSB_BIT) << group_index) as u64;
+                bucket_min_values[i] = ((offset_in_group | BucketConfig::<WIDTH>::GROUP_MSB_BIT)
+                    << group_index) as u64;
             }
         }
 
         // Precompute bucket indices for small values
-        let small_value_buckets: Vec<u8> = (0..Self::SMALL_VALUE_CACHE_SIZE)
+        let small_value_buckets: Vec<u8> = (0..BucketConfig::<WIDTH>::SMALL_VALUE_CACHE_SIZE)
             .map(|v| Self::calculate_bucket_uncached(v as u64) as u8)
             .collect();
 
         // Start with 1 slot
         let mut slots = VecDeque::with_capacity(capacity);
-        slots.push_back(Slot::new(Self::BUCKETS_FOR_U64));
+        slots.push_back(Slot::new(BucketConfig::<WIDTH>::BUCKETS));
 
         Self {
             slots,
-            aggregate_buckets: vec![0; Self::BUCKETS_FOR_U64],
+            aggregate_buckets: vec![0; BucketConfig::<WIDTH>::BUCKETS],
             bucket_min_values,
             small_value_buckets,
         }
@@ -193,7 +161,7 @@ impl<T> Histogram<T> {
             }
         }
 
-        let mut slot = Slot::new(Self::BUCKETS_FOR_U64);
+        let mut slot = Slot::new(BucketConfig::<WIDTH>::BUCKETS);
         slot.data = Some(data);
         self.slots.push_back(slot);
 
@@ -231,7 +199,7 @@ impl<T> Histogram<T> {
 
     /// Calculates the bucket index for a given value, using cache for small values.
     fn calculate_bucket(&self, value: u64) -> usize {
-        if value < Self::SMALL_VALUE_CACHE_SIZE as u64 {
+        if value < BucketConfig::<WIDTH>::SMALL_VALUE_CACHE_SIZE as u64 {
             return self.small_value_buckets[value as usize] as usize;
         }
         Self::calculate_bucket_uncached(value)
@@ -248,15 +216,16 @@ impl<T> Histogram<T> {
     ///    - Extract offset within that group using the 2 bits after MSB
     ///    - Bucket index = base of this group + offset within group
     fn calculate_bucket_uncached(value: u64) -> usize {
-        if value < Self::GROUP_SIZE as u64 {
+        if value < BucketConfig::<WIDTH>::GROUP_SIZE as u64 {
             return value as usize;
         }
 
         let bits_upto_msb = (u64::BITS - value.leading_zeros()) as usize;
-        let group_index = bits_upto_msb - Self::WIDTH;
-        let offset_in_group = ((value >> group_index) & Self::MASK) as usize;
+        let group_index = bits_upto_msb - BucketConfig::<WIDTH>::WIDTH;
+        let offset_in_group = ((value >> group_index) & BucketConfig::<WIDTH>::MASK) as usize;
 
-        let buckets_before_this_group = Self::GROUP_SIZE + group_index * Self::GROUP_SIZE;
+        let buckets_before_this_group =
+            BucketConfig::<WIDTH>::GROUP_SIZE + group_index * BucketConfig::<WIDTH>::GROUP_SIZE;
         buckets_before_this_group + offset_in_group
     }
 
@@ -293,7 +262,7 @@ impl<T> Histogram<T> {
         let target = (total as f64 * p).ceil().max(1.0) as u64;
         let mut cumulative = 0u64;
 
-        for bucket_index in 0..Self::BUCKETS_FOR_U64 {
+        for bucket_index in 0..BucketConfig::<WIDTH>::BUCKETS {
             cumulative += self.bucket_total(bucket_index);
             if cumulative >= target {
                 return self.bucket_min_values[bucket_index];
@@ -326,7 +295,7 @@ impl<T> Histogram<T> {
 
     #[cfg(test)]
     pub(crate) fn num_buckets(&self) -> usize {
-        Self::BUCKETS_FOR_U64
+        BucketConfig::<WIDTH>::BUCKETS
     }
 }
 
@@ -434,7 +403,7 @@ mod tests {
         let max_bucket = Histogram::<()>::calculate_bucket_uncached(u64::MAX);
         assert_eq!(max_bucket, 251, "u64::MAX should map to bucket 251");
         assert_eq!(
-            Histogram::<()>::BUCKETS_FOR_U64,
+            BucketConfig::<3>::BUCKETS,
             252,
             "Should need exactly 252 buckets"
         );
@@ -606,8 +575,8 @@ mod tests {
         let hist: Histogram = Histogram::new();
 
         // Test at cache boundary
-        let last_cached = (Histogram::<()>::SMALL_VALUE_CACHE_SIZE - 1) as u64;
-        let first_uncached = Histogram::<()>::SMALL_VALUE_CACHE_SIZE as u64;
+        let last_cached = (BucketConfig::<3>::SMALL_VALUE_CACHE_SIZE - 1) as u64;
+        let first_uncached = BucketConfig::<3>::SMALL_VALUE_CACHE_SIZE as u64;
 
         assert_eq!(
             hist.calculate_bucket(last_cached),
