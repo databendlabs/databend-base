@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
-use super::bucket_ops::BUCKETS;
-use super::bucket_ops::Buckets3;
+use super::log_scale::LOG_SCALE;
+use super::log_scale::LogScale3;
 use super::percentile_stats::PercentileStats;
 use crate::histogram::slot::Slot;
 
@@ -60,8 +60,8 @@ use crate::histogram::slot::Slot;
 /// u64 range [0, 2^64-1].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Histogram<T = ()> {
-    /// Bucket configuration for value-to-bucket mapping.
-    buckets: &'static Buckets3,
+    /// Log scale for value-to-bucket mapping.
+    log_scale: &'static LogScale3,
 
     /// Slots containing bucket counts and metadata. Uses VecDeque for O(1) front removal.
     /// All slots in the deque are active. First slot (index 0) is oldest, last is current.
@@ -97,29 +97,29 @@ impl<T> Histogram<T> {
     ///
     /// Panics if `capacity` is 0.
     pub fn with_slots(capacity: usize) -> Self {
-        Self::with_buckets(&BUCKETS, capacity)
+        Self::with_log_scale(&LOG_SCALE, capacity)
     }
 
-    /// Creates a new histogram with custom buckets and slot capacity.
+    /// Creates a new histogram with custom log scale and slot capacity.
     ///
     /// # Arguments
     ///
-    /// * `buckets` - Bucket configuration for value-to-bucket mapping.
+    /// * `log_scale` - Log scale for value-to-bucket mapping.
     /// * `capacity` - Maximum number of slots.
     ///
     /// # Panics
     ///
     /// Panics if `capacity` is 0.
-    pub fn with_buckets(buckets: &'static Buckets3, capacity: usize) -> Self {
+    pub fn with_log_scale(log_scale: &'static LogScale3, capacity: usize) -> Self {
         assert!(capacity > 0, "capacity must be at least 1");
 
-        let num_buckets = buckets.num_buckets();
+        let num_buckets = log_scale.num_buckets();
 
         let mut slots = VecDeque::with_capacity(capacity);
         slots.push_back(Slot::new(num_buckets));
 
         Self {
-            buckets,
+            log_scale,
             slots,
             aggregate_buckets: vec![0; num_buckets],
         }
@@ -127,7 +127,7 @@ impl<T> Histogram<T> {
 
     /// Records a value to the current (last) slot.
     pub fn record(&mut self, value: u64) {
-        let bucket_index = self.buckets.calculate_bucket(value);
+        let bucket_index = self.log_scale.calculate_bucket(value);
         self.slots.back_mut().unwrap().buckets[bucket_index] += 1;
         self.aggregate_buckets[bucket_index] += 1;
     }
@@ -148,7 +148,7 @@ impl<T> Histogram<T> {
             }
         }
 
-        let mut slot = Slot::new(self.buckets.num_buckets());
+        let mut slot = Slot::new(self.log_scale.num_buckets());
         slot.data = Some(data);
         self.slots.push_back(slot);
 
@@ -215,7 +215,7 @@ impl<T> Histogram<T> {
         for (bucket_index, &count) in self.aggregate_buckets.iter().enumerate() {
             cumulative += count;
             if cumulative >= target {
-                return self.buckets.bucket_min_value(bucket_index);
+                return self.log_scale.bucket_min_value(bucket_index);
             }
         }
 
@@ -245,15 +245,15 @@ impl<T> Histogram<T> {
 
     #[cfg(test)]
     pub(crate) fn num_buckets(&self) -> usize {
-        self.buckets.num_buckets()
+        self.log_scale.num_buckets()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::histogram::BucketConfig;
-    use crate::histogram::Buckets3;
+    use crate::histogram::LogScale3;
+    use crate::histogram::LogScaleConfig;
 
     #[test]
     fn test_slot_clear() {
@@ -288,8 +288,11 @@ mod tests {
         assert_eq!(hist.total(), 4);
         assert_eq!(hist.get_bucket(1), 1);
         assert_eq!(hist.get_bucket(5), 1);
-        assert_eq!(hist.get_bucket(Buckets3::calculate_bucket_uncached(10)), 1);
-        assert_eq!(hist.get_bucket(Buckets3::calculate_bucket_uncached(100)), 1);
+        assert_eq!(hist.get_bucket(LogScale3::calculate_bucket_uncached(10)), 1);
+        assert_eq!(
+            hist.get_bucket(LogScale3::calculate_bucket_uncached(100)),
+            1
+        );
     }
 
     #[test]
@@ -306,10 +309,10 @@ mod tests {
 
     #[test]
     fn test_u64_max_coverage() {
-        let max_bucket = Buckets3::calculate_bucket_uncached(u64::MAX);
+        let max_bucket = LogScale3::calculate_bucket_uncached(u64::MAX);
         assert_eq!(max_bucket, 251, "u64::MAX should map to bucket 251");
         assert_eq!(
-            BucketConfig::<3>::BUCKETS,
+            LogScaleConfig::<3>::BUCKETS,
             252,
             "Should need exactly 252 buckets"
         );

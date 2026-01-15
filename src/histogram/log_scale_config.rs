@@ -6,9 +6,9 @@
 ///
 /// All derived constants are computed at compile time from `WIDTH`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BucketConfig<const WIDTH: usize>;
+pub struct LogScaleConfig<const WIDTH: usize>;
 
-impl<const WIDTH: usize> BucketConfig<WIDTH> {
+impl<const WIDTH: usize> LogScaleConfig<WIDTH> {
     /// The width of the bit pattern used for bucketing (most significant bits).
     ///
     /// Each bucket group uses WIDTH bits: 1 MSB + (WIDTH-1) offset bits.
@@ -43,5 +43,5 @@ impl<const WIDTH: usize> BucketConfig<WIDTH> {
     pub const SMALL_VALUE_CACHE_SIZE: usize = 4096;
 }
 
-/// Default bucket configuration with WIDTH=3 (252 buckets, ~12.5% max error).
-pub type DefaultBucketConfig = BucketConfig<3>;
+/// Default log scale configuration with WIDTH=3 (252 buckets, ~12.5% max error).
+pub type DefaultLogScaleConfig = LogScaleConfig<3>;
