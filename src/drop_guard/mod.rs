@@ -38,9 +38,7 @@ pub struct DropGuard {
 
 impl fmt::Debug for DropGuard {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("DropGuard")
-            .field("active", &self.f.is_some())
-            .finish()
+        f.debug_struct("DropGuard").field("active", &self.f.is_some()).finish()
     }
 }
 
@@ -76,10 +74,10 @@ impl Drop for DropGuard {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
-    use std::sync::Arc;
 
     use super::*;
 
