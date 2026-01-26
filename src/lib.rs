@@ -2,6 +2,7 @@
 //!
 //! # Modules
 //!
+//! - [`counter`]: Track the count of active instances with RAII guards.
 //! - [`drop_guard`]: RAII guard that executes a closure when dropped.
 //! - [`futures`]: Utilities for working with async futures, including elapsed time tracking.
 //! - [`histogram`]: A histogram with logarithmic bucketing for tracking u64 value distributions.
@@ -10,6 +11,7 @@
 //! - [`uniq_id`]: Unique identifier generators (sequential and random).
 //! - [`unwind`]: Panic-safe utilities for handling unwinding scenarios.
 
+pub mod counter;
 pub mod drop_guard;
 pub mod futures;
 pub mod histogram;
