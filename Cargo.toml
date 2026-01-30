@@ -9,7 +9,7 @@ serde = ["dep:serde"]
 
 [dependencies]
 async-trait = "0.1"
-jwt-simple = "0.12"
+jwt-simple = { version = "0.12.10", default-features = false, features = ["pure-rust"] }
 ctrlc = "3.4"
 futures = "0.3"
 log = "0.4"
