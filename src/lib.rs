@@ -12,6 +12,7 @@
 //! - [`testutil`]: Utilities for local development and testing, including port allocation.
 //! - [`shutdown`]: Graceful shutdown management for services.
 //! - [`uniq_id`]: Unique identifier generators (sequential and random).
+//! - [`string_util`]: String utilities for range queries and manipulation.
 //! - [`unwind`]: Panic-safe utilities for handling unwinding scenarios.
 
 pub mod counter;
@@ -21,6 +22,7 @@ pub mod grpc_token;
 pub mod histogram;
 pub mod non_empty;
 pub mod shutdown;
+pub mod string_util;
 pub mod testutil;
 pub mod uniq_id;
 pub mod unwind;
