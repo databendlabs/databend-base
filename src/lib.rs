@@ -6,8 +6,6 @@
 //! - [`drop_guard`]: RAII guard that executes a closure when dropped.
 //! - [`futures`]: Utilities for working with async futures, including elapsed time tracking.
 //! - [`grpc_token`]: JWT-based authentication tokens for gRPC services.
-//! - [`histogram`]: A histogram with logarithmic bucketing for tracking u64 value distributions.
-//!   Provides O(1) recording and efficient percentile calculation with bounded memory (~2KB).
 //! - [`non_empty`]: Non-empty string types that guarantee the contained string is never empty.
 //! - [`testutil`]: Utilities for local development and testing, including port allocation.
 //! - [`shutdown`]: Graceful shutdown management for services.
@@ -19,7 +17,6 @@ pub mod counter;
 pub mod drop_guard;
 pub mod futures;
 pub mod grpc_token;
-pub mod histogram;
 pub mod non_empty;
 pub mod shutdown;
 pub mod string_util;
