@@ -18,7 +18,19 @@
 //! assert_eq!(verified.username, "alice");
 //! ```
 
-use jwt_simple::prelude::*;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
+
+use jsonwebtoken::Algorithm;
+use jsonwebtoken::DecodingKey;
+use jsonwebtoken::EncodingKey;
+use jsonwebtoken::Header;
+use jsonwebtoken::Validation;
+use jsonwebtoken::decode;
+use jsonwebtoken::encode;
+use rand::RngCore;
+
+const TOKEN_TTL_SECS: u64 = 3650 * 24 * 60 * 60;
 
 /// Claims embedded in the JWT token payload.
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
@@ -27,31 +39,63 @@ pub struct GrpcClaim {
     pub username: String,
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct WireClaims {
+    username: String,
+    exp: u64,
+}
+
 /// JWT token manager for gRPC authentication.
 ///
 /// Cloning shares the same key, allowing multiple references to create and
 /// verify tokens interchangeably.
 #[derive(Clone)]
 pub struct GrpcToken {
-    key: HS256Key,
+    encoding_key: EncodingKey,
+    decoding_key: DecodingKey,
 }
 
 impl GrpcToken {
     /// Creates a new token manager with a randomly generated HMAC-SHA256 key.
     pub fn create() -> Self {
+        let mut secret = [0u8; 32];
+        rand::rng().fill_bytes(&mut secret);
         Self {
-            key: HS256Key::generate(),
+            encoding_key: EncodingKey::from_secret(&secret),
+            decoding_key: DecodingKey::from_secret(&secret),
         }
     }
 
     /// Creates a signed JWT token valid for 10 years.
-    pub fn try_create_token(&self, claim: GrpcClaim) -> Result<String, jwt_simple::Error> {
-        self.key.authenticate(Claims::with_custom_claims(claim, Duration::from_days(3650)))
+    pub fn try_create_token(
+        &self,
+        claim: GrpcClaim,
+    ) -> Result<String, jsonwebtoken::errors::Error> {
+        let exp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time is before UNIX epoch")
+            .as_secs()
+            + TOKEN_TTL_SECS;
+        let wire = WireClaims {
+            username: claim.username,
+            exp,
+        };
+        encode(&Header::new(Algorithm::HS256), &wire, &self.encoding_key)
     }
 
     /// Verifies a token signature and expiration, returning the embedded claim.
-    pub fn try_verify_token(&self, token: &str) -> Result<GrpcClaim, jwt_simple::Error> {
-        Ok(self.key.verify_token::<GrpcClaim>(token, None)?.custom)
+    pub fn try_verify_token(
+        &self,
+        token: &str,
+    ) -> Result<GrpcClaim, jsonwebtoken::errors::Error> {
+        let data = decode::<WireClaims>(
+            token,
+            &self.decoding_key,
+            &Validation::new(Algorithm::HS256),
+        )?;
+        Ok(GrpcClaim {
+            username: data.claims.username,
+        })
     }
 }
 

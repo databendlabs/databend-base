@@ -9,11 +9,12 @@ serde = ["dep:serde"]
 
 [dependencies]
 async-trait = "0.1"
-jwt-simple = { version = "0.12.10", default-features = false, features = ["pure-rust"] }
+jsonwebtoken = { version = "9", default-features = false }
 ctrlc = "3.4"
 futures = "0.3"
 log = "0.4"
 pin-project-lite = "0.2"
+rand = "0.9"
 serde = { version = "1", features = ["derive"], optional = true }
 tokio = { version = "1", features = ["sync"] }
 uuid = { version = "1", features = ["v4"] }
