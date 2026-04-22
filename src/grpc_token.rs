@@ -84,10 +84,7 @@ impl GrpcToken {
     }
 
     /// Verifies a token signature and expiration, returning the embedded claim.
-    pub fn try_verify_token(
-        &self,
-        token: &str,
-    ) -> Result<GrpcClaim, jsonwebtoken::errors::Error> {
+    pub fn try_verify_token(&self, token: &str) -> Result<GrpcClaim, jsonwebtoken::errors::Error> {
         let data = decode::<WireClaims>(
             token,
             &self.decoding_key,
